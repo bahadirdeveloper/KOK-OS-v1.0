@@ -805,7 +805,7 @@ function IntakeSummary({ answers, conditionalAnswers, onClose, onUpdateAnswers }
                         groupIndex={editingGroup}
                         answers={answers}
                         onClose={() => setEditingGroup(null)}
-                        onSave={(newGroupAnswers) => {
+                        onSave={(newGroupAnswers: Record<string, any>) => {
                             onUpdateAnswers({ ...answers, ...newGroupAnswers });
                             setEditingGroup(null);
                         }}
