@@ -554,95 +554,115 @@ function IntakeSummary({ answers, conditionalAnswers, onClose, onUpdateAnswers }
         return checklist;
     };
 
-    const generatePDF = () => {
+    const generatePDF = async () => {
         setExporting(true);
-        const doc = new jsPDF();
 
-        // Define formatting
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const primaryColor = '#000000'; // Black
-        const secondaryColor = '#808080'; // Gray
+        try {
+            const doc = new jsPDF();
 
-        // Title
-        doc.setFontSize(22);
-        doc.setTextColor(primaryColor);
-        doc.text('KÖK-OS | İşletme Doğum Raporu', 14, 20);
+            // Load Turkish compatible font (Roboto)
+            // Using a CDN approach to get the font arraybuffer
+            const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+            const fontResponse = await fetch(fontUrl);
+            const fontBuffer = await fontResponse.arrayBuffer();
 
-        doc.setFontSize(12);
-        doc.setTextColor(secondaryColor);
-        doc.text(`İşletme: ${answers.businessName || 'İsimsiz'}`, 14, 30);
-        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 36);
+            doc.addFileToVFS('Roboto-Regular.ttf', Buffer.from(fontBuffer).toString('binary'));
+            doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+            doc.setFont('Roboto');
 
-        let yPos = 45;
+            // Define formatting
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const primaryColor = '#000000'; // Black
+            const secondaryColor = '#505050'; // Dark Gray
 
-        // AutoTable for Questions
-        const tableBody: any[] = [];
-        QUESTION_GROUPS.forEach(group => {
-            // Group Header Row
-            tableBody.push([{ content: group.label, colSpan: 2, styles: { fillColor: [240, 240, 240], fontStyle: 'bold' } }]);
+            // Title
+            doc.setFontSize(22);
+            doc.setTextColor(primaryColor);
+            doc.text('KÖK-OS | İşletme Doğum Raporu', 14, 20);
 
-            const groupAnswers = Object.entries(answers).filter(([key]) => {
-                const q = ALL_QUESTIONS.find(q => q.id === key);
-                return q && q.group === QUESTION_GROUPS.indexOf(group);
+            doc.setFontSize(10);
+            doc.setTextColor(secondaryColor);
+            doc.text(`İşletme: ${answers.businessName || 'İsimsiz'}`, 14, 28);
+            doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 33);
+
+            let yPos = 40;
+
+            // --- 1. DATA TABLE ---
+            const tableBody: any[] = [];
+            QUESTION_GROUPS.forEach(group => {
+                // Group Header Row
+                tableBody.push([{ content: group.label, colSpan: 2, styles: { fillColor: [240, 240, 240], fontStyle: 'bold', textColor: [0, 0, 0] } }]);
+
+                const groupAnswers = Object.entries(answers).filter(([key]) => {
+                    const q = ALL_QUESTIONS.find(q => q.id === key);
+                    return q && q.group === QUESTION_GROUPS.indexOf(group);
+                });
+
+                groupAnswers.forEach(([key, value]) => {
+                    const q = ALL_QUESTIONS.find(q => q.id === key);
+                    const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
+                    tableBody.push([q?.label || key, displayValue]);
+                });
             });
 
-            groupAnswers.forEach(([key, value]) => {
-                const q = ALL_QUESTIONS.find(q => q.id === key);
-                const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
-                tableBody.push([q?.label || key, displayValue]);
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Soru / Alan', 'Yanıt']],
+                body: tableBody,
+                theme: 'grid',
+                headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], font: 'Roboto' },
+                styles: { fontSize: 9, cellPadding: 3, font: 'Roboto', overflow: 'linebreak' },
+                columnStyles: { 0: { cellWidth: 80 } }
             });
-        });
 
-        autoTable(doc, {
-            startY: yPos,
-            head: [['Soru / Alan', 'Yanıt']],
-            body: tableBody,
-            theme: 'grid',
-            headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
-            styles: { fontSize: 10, cellPadding: 4 },
-            columnStyles: { 0: { cellWidth: 90 } } // Give more space to questions
-        });
+            // @ts-ignore
+            yPos = doc.lastAutoTable.finalY + 15;
 
-        // @ts-ignore
-        yPos = doc.lastAutoTable.finalY + 15;
+            // --- 2. CHECKLIST TABLE ---
+            const checklistItems = getSetupChecklist().map(item => [`[ ] ${item}`]);
 
-        // Checklist Section
-        if (yPos > 240) { doc.addPage(); yPos = 20; }
+            doc.setFontSize(14);
+            doc.setTextColor(primaryColor);
+            doc.text('Kurulum Checklist (Manuel İşler)', 14, yPos);
+            yPos += 5;
 
-        doc.setFontSize(16);
-        doc.setTextColor(primaryColor);
-        doc.text('Kurulum Checklist (Manuel İşler)', 14, yPos);
-        yPos += 10;
+            autoTable(doc, {
+                startY: yPos,
+                body: checklistItems,
+                theme: 'plain',
+                styles: { fontSize: 10, font: 'Roboto', cellPadding: 2 },
+                showHead: 'never'
+            });
 
-        doc.setFontSize(11);
-        doc.setTextColor(0);
-        getSetupChecklist().forEach((item, index) => {
-            doc.text(`[ ] ${item}`, 14, yPos);
-            yPos += 7;
-        });
+            // @ts-ignore
+            yPos = doc.lastAutoTable.finalY + 15;
 
-        yPos += 10;
+            // --- 3. AUTOMATION TABLE ---
+            const automationItems = getAutomationCandidates().map(item => [`• ${item.name}\n  ${item.desc}`]);
 
-        // Automation Section
-        if (yPos > 240) { doc.addPage(); yPos = 20; }
+            // Check page break for title
+            if (yPos > 250) { doc.addPage(); yPos = 20; }
 
-        doc.setFontSize(16);
-        doc.setTextColor(primaryColor);
-        doc.text('Otomasyon Fırsatları', 14, yPos);
-        yPos += 10;
+            doc.setFontSize(14);
+            doc.text('Otomasyon Fırsatları', 14, yPos);
+            yPos += 5;
 
-        doc.setFontSize(11);
-        getAutomationCandidates().forEach((item) => {
-            if (yPos > 280) { doc.addPage(); yPos = 20; }
-            doc.setFont('helvetica', 'bold');
-            doc.text(`• ${item.name}`, 14, yPos);
-            doc.setFont('helvetica', 'normal');
-            doc.text(`  ${item.desc}`, 14, yPos + 5);
-            yPos += 12;
-        });
+            autoTable(doc, {
+                startY: yPos,
+                body: automationItems,
+                theme: 'striped',
+                styles: { fontSize: 10, font: 'Roboto', cellPadding: 3 },
+                showHead: 'never'
+            });
 
-        doc.save(`kok-os-rapor-${answers.businessName || 'isletme'}.pdf`);
-        setExporting(false);
+            doc.save(`kok-os-rapor-${answers.businessName || 'isletme'}.pdf`);
+
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            alert('PDF oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
+        } finally {
+            setExporting(false);
+        }
     };
 
     const handleSystemStart = async () => {
