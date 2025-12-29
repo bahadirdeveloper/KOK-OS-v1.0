@@ -3,8 +3,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBoot } from '@/contexts/BootContext';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+// Extend jsPDF type for autotable
+declare module 'jspdf' {
+    interface jsPDF {
+        autoTable: (options: any) => jsPDF;
+    }
+}
 
 // Type definitions
+import { submitIntake } from '@/app/actions';
+
 interface FollowUpQuestion {
     id: string;
     label: string;
@@ -510,6 +520,8 @@ export default function BusinessBirthIntake() {
 // Summary Component
 function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Record<string, any>; conditionalAnswers: Record<string, any>; onClose: () => void }) {
     const [exporting, setExporting] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+
 
     const getAutomationCandidates = () => {
         const candidates = [];
@@ -547,27 +559,118 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
         return checklist;
     };
 
-    const exportJSON = () => {
+    const generatePDF = () => {
         setExporting(true);
-        const data = { answers, conditionalAnswers, exportedAt: new Date().toISOString(), version: '1.0' };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `kok-os-intake-${answers.businessName || 'isletme'}-${Date.now()}.json`;
-        a.click();
-        setTimeout(() => setExporting(false), 1000);
+        const doc = new jsPDF();
+
+        // Define formatting
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const primaryColor = '#000000'; // Black
+        const secondaryColor = '#808080'; // Gray
+
+        // Title
+        doc.setFontSize(22);
+        doc.setTextColor(primaryColor);
+        doc.text('KÖK-OS | İşletme Doğum Raporu', 14, 20);
+
+        doc.setFontSize(12);
+        doc.setTextColor(secondaryColor);
+        doc.text(`İşletme: ${answers.businessName || 'İsimsiz'}`, 14, 30);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 36);
+
+        let yPos = 45;
+
+        // AutoTable for Questions
+        const tableBody: any[] = [];
+        QUESTION_GROUPS.forEach(group => {
+            // Group Header Row
+            tableBody.push([{ content: group.label, colSpan: 2, styles: { fillColor: [240, 240, 240], fontStyle: 'bold' } }]);
+
+            const groupAnswers = Object.entries(answers).filter(([key]) => {
+                const q = ALL_QUESTIONS.find(q => q.id === key);
+                return q && q.group === QUESTION_GROUPS.indexOf(group);
+            });
+
+            groupAnswers.forEach(([key, value]) => {
+                const q = ALL_QUESTIONS.find(q => q.id === key);
+                const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
+                tableBody.push([q?.label || key, displayValue]);
+            });
+        });
+
+        // @ts-ignore
+        doc.autoTable({
+            startY: yPos,
+            head: [['Soru / Alan', 'Yanıt']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+            styles: { fontSize: 10, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 90 } } // Give more space to questions
+        });
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // Checklist Section
+        if (yPos > 240) { doc.addPage(); yPos = 20; }
+
+        doc.setFontSize(16);
+        doc.setTextColor(primaryColor);
+        doc.text('Kurulum Checklist (Manuel İşler)', 14, yPos);
+        yPos += 10;
+
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        getSetupChecklist().forEach((item, index) => {
+            doc.text(`[ ] ${item}`, 14, yPos);
+            yPos += 7;
+        });
+
+        yPos += 10;
+
+        // Automation Section
+        if (yPos > 240) { doc.addPage(); yPos = 20; }
+
+        doc.setFontSize(16);
+        doc.setTextColor(primaryColor);
+        doc.text('Otomasyon Fırsatları', 14, yPos);
+        yPos += 10;
+
+        doc.setFontSize(11);
+        getAutomationCandidates().forEach((item) => {
+            if (yPos > 280) { doc.addPage(); yPos = 20; }
+            doc.setFont('helvetica', 'bold');
+            doc.text(`• ${item.name}`, 14, yPos);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`  ${item.desc}`, 14, yPos + 5);
+            yPos += 12;
+        });
+
+        doc.save(`kok-os-rapor-${answers.businessName || 'isletme'}.pdf`);
+        setExporting(false);
     };
 
-    const splitIntoTasks = () => {
-        const tasks = {
-            'Dijital Altyapı': ['Domain/DNS ayarları', 'Web sitesi kurulumu', 'Hosting yapılandırması'],
-            'Sosyal Medya': ['Instagram bağlantısı', 'Meta Business erişimi', 'Google Business optimizasyonu'],
-            'İletişim Kanalları': ['WhatsApp Business kurulumu', 'E-posta yapılandırması', 'CRM entegrasyonu'],
-            'Marka & İçerik': ['Logo yerleştirme', 'Renk/font ayarları', 'SSS içerikleri', 'Ürün kataloğu']
-        };
-        console.log('Görev dağılımı:', tasks);
-        alert('Görevler konsola yazdırıldı. Yakında ekip yönetim paneline aktarılacak.');
+    const handleSystemStart = async () => {
+        if (!confirm('Tüm bilgilerin doğruluğundan emin misiniz? Sistem bu verilerle başlatılacak.')) return;
+
+        setSubmitting(true);
+        try {
+            const result = await submitIntake({ answers, conditionalAnswers, timestamp: new Date().toISOString() });
+
+            if (result.success) {
+                alert('✅ ' + result.message);
+                // Optional: Reset form or redirect
+                onClose();
+            } else {
+                alert('❌ Hata: ' + result.message);
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Beklenmedik bir hata oluştu.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const automationCandidates = getAutomationCandidates();
@@ -663,23 +766,39 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
                 {/* Export Actions */}
                 <div className="mt-12 flex flex-wrap justify-center gap-4">
                     <button
-                        onClick={exportJSON}
+                        onClick={generatePDF}
                         disabled={exporting}
-                        className="px-6 py-3 bg-[#c8ff00] text-black font-bold rounded-lg hover:shadow-[0_0_20px_rgba(200,255,0,0.4)] transition-all disabled:opacity-50"
+                        className="px-6 py-3 bg-white/10 border border-white/20 text-white font-bold rounded-lg hover:bg-white/20 hover:border-white/40 transition-all disabled:opacity-50 flex items-center gap-2"
                     >
-                        {exporting ? 'Dışa aktarılıyor...' : '📄 JSON İndir'}
-                    </button>
-                    <button
-                        onClick={splitIntoTasks}
-                        className="px-6 py-3 border border-white/20 text-white font-bold rounded-lg hover:border-[#c8ff00] transition-all"
-                    >
-                        👥 Ekip Görevlerine Böl
+                        {exporting ? 'Oluşturuluyor...' : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                📄 PDF İndir
+                            </>
+                        )}
                     </button>
                     <button
                         onClick={onClose}
-                        className="px-6 py-3 border border-white/20 text-white font-bold rounded-lg hover:border-green-500 hover:text-green-500 transition-all"
+                        className="px-6 py-3 border border-white/20 text-white font-bold rounded-lg hover:border-white/50 transition-all opacity-70 hover:opacity-100"
                     >
-                        ✓ Sisteme Dön
+                        Düzeltme Yap
+                    </button>
+
+                    <button
+                        onClick={handleSystemStart}
+                        disabled={submitting}
+                        className="px-8 py-4 bg-[#c8ff00] text-black text-lg font-bold rounded-xl hover:shadow-[0_0_30px_rgba(200,255,0,0.6)] hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {submitting ? (
+                            <>
+                                <span className="animate-spin text-xl">↻</span>
+                                İşleniyor...
+                            </>
+                        ) : (
+                            <>
+                                🚀 SİSTEMİ BAŞLAT
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
