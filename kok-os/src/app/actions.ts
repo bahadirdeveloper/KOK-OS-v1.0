@@ -39,14 +39,15 @@ export async function submitIntake(data: any) {
 
         // 2. Send Email via Resend (if configured)
         if (resendApiKey) {
-            const resend = new Resend(resendApiKey);
+            try {
+                const resend = new Resend(resendApiKey);
 
-            // Admin Notification
-            await resend.emails.send({
-                from: 'KOK-OS System <onboarding@resend.dev>', // Update with your verified domain
-                to: 'bahdevpro@gmail.com', // The user's email from previous context (or passed as env var)
-                subject: `Yeni Sistem Başlatma Talebi: ${data.answers.businessName}`,
-                html: `
+                // Admin Notification
+                await resend.emails.send({
+                    from: 'KOK-OS System <onboarding@resend.dev>', // Update with your verified domain
+                    to: 'bahdevpro@gmail.com', // The user's email from previous context (or passed as env var)
+                    subject: `Yeni Sistem Başlatma Talebi: ${data.answers.businessName}`,
+                    html: `
           <h1>Yeni Müşteri Adayı</h1>
           <p><strong>İşletme:</strong> ${data.answers.businessName}</p>
           <p><strong>İletişim:</strong> ${data.answers.contactPerson} (${data.answers.email})</p>
@@ -55,15 +56,20 @@ export async function submitIntake(data: any) {
           <hr />
           <p>Detaylı veri Supabase 'intakes' tablosuna kaydedildi.</p>
         `
-            });
+                });
+            } catch (emailError) {
+                console.error('Email sending failed, but DB saved:', emailError);
+                // We don't throw here, just log it. The primary goal (data saving) is complete.
+            }
         }
 
         result.success = true;
         result.message = 'Sistem kurulum talebiniz başarıyla alındı. Yönetici onayı bekleniyor.';
 
     } catch (error: any) {
-        console.error('Submission error:', error);
-        result.message = error.message || 'Bir hata oluştu.';
+        console.error('Submission error details:', error);
+        // Return the specific error message to the client for debugging
+        result.message = `Hata Detayı: ${error.message || JSON.stringify(error)}`;
     }
 
     return result;
