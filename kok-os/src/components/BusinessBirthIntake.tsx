@@ -110,7 +110,7 @@ interface TerminalLog {
     timestamp: string;
 }
 
-export default function BusinessBirthIntake() {
+export default function BusinessBirthIntake({ onBack }: { onBack?: () => void }) {
     const { setStep } = useBoot();
     const [currentQuestion, setCurrentQuestion] = useState(0);
     const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -216,6 +216,8 @@ export default function BusinessBirthIntake() {
             const prevQ = ALL_QUESTIONS[currentQuestion - 1];
             setInputValue(answers[prevQ.id] || '');
             setMultiSelectValues(Array.isArray(answers[prevQ.id]) ? answers[prevQ.id] : []);
+        } else if (onBack) {
+            onBack();
         }
     };
 
@@ -368,7 +370,12 @@ export default function BusinessBirthIntake() {
                             </div>
                             <span className="text-xs text-gray-500 font-mono">Adım {currentQuestion + 1} / {ALL_QUESTIONS.length}</span>
                         </div>
-                        <h1 className="text-xl md:text-2xl font-bold">İşletme Doğumu: Çekirdek Veri Toplama</h1>
+                        <div className="flex justify-between items-start">
+                            <h1 className="text-xl md:text-2xl font-bold">İşletme Doğumu: Çekirdek Veri Toplama</h1>
+                            <button onClick={onBack} className="text-gray-500 hover:text-white text-xs border border-white/20 px-2 py-1 rounded">
+                                ÇIK
+                            </button>
+                        </div>
                         <p className="text-sm text-gray-500 mt-1">Bu bilgiler KÖK-OS kurulumunu A-Z tamamlamamız için gereklidir.</p>
 
                         {/* Progress Bar */}
@@ -447,8 +454,7 @@ export default function BusinessBirthIntake() {
                                     <div className="flex items-center justify-between pt-8 border-t border-white/10">
                                         <button
                                             onClick={handleBack}
-                                            disabled={currentQuestion === 0 && !showConditional}
-                                            className="text-gray-500 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                                            className="text-gray-500 hover:text-white transition-colors flex items-center gap-2"
                                         >
                                             ← Geri
                                         </button>

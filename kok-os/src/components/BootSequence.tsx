@@ -61,8 +61,28 @@ export default function BootSequence() {
 
     if (step === 'IDLE') return null;
 
+    const handleShutdown = () => {
+        if (confirm('Sistemi kapatmak istiyor musunuz? İlerlemeniz kaydedilmeyecek.')) {
+            setStep('IDLE');
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-[100] bg-black/95 text-white font-mono flex flex-col items-center justify-center overflow-hidden">
+            {/* System Controls */}
+            <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-50 pointer-events-none">
+                <div className="pointer-events-auto">
+                    {/* Left side controls if needed */}
+                </div>
+                <button
+                    onClick={handleShutdown}
+                    className="pointer-events-auto flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded hover:bg-red-500/20 transition-colors text-xs font-bold"
+                >
+                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    SİSTEMİ KAPAT
+                </button>
+            </div>
+
             {/* Background Grid & Effects */}
             <div className="absolute inset-0 z-0 pointer-events-none">
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(200,255,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(200,255,0,0.03)_1px,transparent_1px)] bg-[size:40px_40px] opacity-20" />
@@ -176,6 +196,7 @@ export default function BootSequence() {
                         step={setupStep}
                         setStep={setSetupStep}
                         onComplete={() => setStep('ONLINE')}
+                        onBack={() => setStep('IDENTITY')}
                         updateBootData={updateBootData}
                         bootData={bootData}
                     />
@@ -183,17 +204,20 @@ export default function BootSequence() {
 
                 {/* STEP 4: SYSTEM ONLINE */}
                 {step === 'ONLINE' && (
-                    <OnlineDashboard onExit={() => setStep('BUSINESS_BIRTH')} />
+                    <OnlineDashboard
+                        onExit={() => setStep('BUSINESS_BIRTH')}
+                        onDisconnect={() => setStep('IDLE')}
+                    />
                 )}
 
                 {/* STEP 5: AUTOMATION BOOT */}
                 {step === 'AUTOMATION_BOOT' && (
-                    <AutomationBoot />
+                    <AutomationBoot onBack={() => setStep('ONLINE')} />
                 )}
 
                 {/* STEP 6: BUSINESS BIRTH INTAKE */}
                 {step === 'BUSINESS_BIRTH' && (
-                    <BusinessBirthIntake />
+                    <BusinessBirthIntake onBack={() => setStep('ONLINE')} />
                 )}
 
             </div>
@@ -219,7 +243,7 @@ export default function BootSequence() {
 
 // --- SUB COMPONENTS ---
 
-function SetupFlow({ step, setStep, onComplete, updateBootData, bootData }: any) {
+function SetupFlow({ step, setStep, onComplete, onBack, updateBootData, bootData }: any) {
     const steps = [
         {
             title: "Kimlik Tanımlama",
@@ -253,6 +277,14 @@ function SetupFlow({ step, setStep, onComplete, updateBootData, bootData }: any)
         }
     };
 
+    const handleBack = () => {
+        if (step > 0) {
+            setStep(step - 1);
+        } else {
+            onBack();
+        }
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -278,26 +310,36 @@ function SetupFlow({ step, setStep, onComplete, updateBootData, bootData }: any)
                         onChange={(e) => updateBootData({ [currentStepData.field]: e.target.value })}
                         onKeyDown={(e) => e.key === 'Enter' && handleNext()}
                     />
-                    <button onClick={handleNext} className="mt-8 text-[#c8ff00] hover:underline font-mono">
-                        Onayla [ENTER]
-                    </button>
+                    <div className="flex gap-4 mt-8">
+                        <button onClick={handleBack} className="text-gray-500 hover:text-white font-mono transition-colors">
+                            ← Geri
+                        </button>
+                        <button onClick={handleNext} className="text-[#c8ff00] hover:underline font-mono">
+                            Onayla [ENTER]
+                        </button>
+                    </div>
                 </div>
             )}
 
             {currentStepData.type === 'select' && (
-                <div className="grid grid-cols-2 gap-4">
-                    {currentStepData.options!.map((opt: string) => (
-                        <button
-                            key={opt}
-                            onClick={() => {
-                                updateBootData({ [currentStepData.field]: opt });
-                                handleNext();
-                            }}
-                            className="p-6 border border-white/10 hover:border-[#c8ff00] hover:bg-[#c8ff00]/5 text-left rounded-lg transition-all"
-                        >
-                            <span className="text-xl font-semibold">{opt}</span>
-                        </button>
-                    ))}
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                        {currentStepData.options!.map((opt: string) => (
+                            <button
+                                key={opt}
+                                onClick={() => {
+                                    updateBootData({ [currentStepData.field]: opt });
+                                    handleNext();
+                                }}
+                                className="p-6 border border-white/10 hover:border-[#c8ff00] hover:bg-[#c8ff00]/5 text-left rounded-lg transition-all"
+                            >
+                                <span className="text-xl font-semibold">{opt}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <button onClick={handleBack} className="text-gray-500 hover:text-white font-mono transition-colors">
+                        ← Geri
+                    </button>
                 </div>
             )}
 
@@ -329,19 +371,27 @@ function SetupFlow({ step, setStep, onComplete, updateBootData, bootData }: any)
                             )
                         })}
                     </div>
-                    <button
-                        onClick={handleNext}
-                        className="w-full bg-[#c8ff00] text-black font-bold py-4 rounded-lg hover:bg-[#bbe000] transition-colors"
-                    >
-                        KURULUMU TAMAMLA
-                    </button>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={handleBack}
+                            className="px-6 py-4 border border-white/10 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+                        >
+                            ← Geri
+                        </button>
+                        <button
+                            onClick={handleNext}
+                            className="flex-1 bg-[#c8ff00] text-black font-bold py-4 rounded-lg hover:bg-[#bbe000] transition-colors"
+                        >
+                            KURULUMU TAMAMLA
+                        </button>
+                    </div>
                 </div>
             )}
         </motion.div>
     );
 }
 
-function OnlineDashboard({ onExit }: { onExit: () => void }) {
+function OnlineDashboard({ onExit, onDisconnect }: { onExit: () => void, onDisconnect: () => void }) {
     return (
         <motion.div
             initial={{ opacity: 0 }}
@@ -353,7 +403,15 @@ function OnlineDashboard({ onExit }: { onExit: () => void }) {
                     <div className="w-3 h-3 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]" />
                     <span className="font-mono text-green-500">SYSTEM_ONLINE</span>
                 </div>
-                <div className="font-mono text-xs text-gray-500">UPTIME: 00:00:01</div>
+                <div className="flex items-center gap-4">
+                    <div className="font-mono text-xs text-gray-500">UPTIME: 00:00:01</div>
+                    <button
+                        onClick={onDisconnect}
+                        className="text-xs text-red-500 hover:text-red-400 border border-red-500/20 px-3 py-1 rounded hover:bg-red-500/10 transition-colors"
+                    >
+                        BAĞLANTIYI KES
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -1,0 +1,6 @@
+{
+    "buildCommand": "cd kok-os && npm install && npm run build",
+    "outputDirectory": "kok-os/.next",
+    "installCommand": "cd kok-os && npm install",
+    "framework": "nextjs"
+}

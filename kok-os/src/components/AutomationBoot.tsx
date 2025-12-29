@@ -11,7 +11,7 @@ interface TerminalLog {
 
 type ConfigStep = 0 | 1 | 2 | 3 | 4 | 5; // 0-4 questions, 5 = confirmation
 
-export default function AutomationBoot() {
+export default function AutomationBoot({ onBack }: { onBack?: () => void }) {
     const { bootData, updateBootData, setStep } = useBoot();
     const [configStep, setConfigStep] = useState<ConfigStep>(0);
     const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
@@ -263,9 +263,14 @@ export default function AutomationBoot() {
                         <h1 className="text-2xl md:text-3xl font-bold text-white">
                             İlk Otomasyon Yapılandırılıyor
                         </h1>
-                        <p className="text-sm text-gray-500 mt-2">
-                            Bu bilgiler otomasyon çekirdeğini oluşturur.
-                        </p>
+                        <div className="flex justify-between items-start">
+                            <p className="text-sm text-gray-500 mt-2">
+                                Bu bilgiler otomasyon çekirdeğini oluşturur.
+                            </p>
+                            <button onClick={onBack} className="text-gray-500 hover:text-white text-xs border border-white/20 px-2 py-1 rounded">
+                                ÇIK
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
 
@@ -313,8 +318,8 @@ export default function AutomationBoot() {
                                                         whileHover={{ x: 4 }}
                                                         whileTap={{ scale: 0.98 }}
                                                         className={`w-full p-4 text-left border rounded-lg transition-all duration-200 flex items-center justify-between group ${isSelected
-                                                                ? 'border-[#c8ff00] bg-[#c8ff00]/10 text-[#c8ff00]'
-                                                                : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-white'
+                                                            ? 'border-[#c8ff00] bg-[#c8ff00]/10 text-[#c8ff00]'
+                                                            : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-white'
                                                             }`}
                                                     >
                                                         <span className="text-sm md:text-base">{option.label}</span>
@@ -337,8 +342,8 @@ export default function AutomationBoot() {
                                                 onClick={handleMultiConfirm}
                                                 disabled={!config.dataFields?.length}
                                                 className={`mt-8 w-full p-4 rounded-lg font-semibold text-black transition-all ${config.dataFields?.length
-                                                        ? 'bg-[#c8ff00] hover:shadow-[0_0_30px_rgba(200,255,0,0.3)] cursor-pointer'
-                                                        : 'bg-gray-700 cursor-not-allowed'
+                                                    ? 'bg-[#c8ff00] hover:shadow-[0_0_30px_rgba(200,255,0,0.3)] cursor-pointer'
+                                                    : 'bg-gray-700 cursor-not-allowed'
                                                     }`}
                                             >
                                                 {config.dataFields?.length
@@ -346,6 +351,15 @@ export default function AutomationBoot() {
                                                     : 'En az bir alan seçin'}
                                             </motion.button>
                                         )}
+
+                                        <div className="mt-8 flex items-center justify-start">
+                                            <button
+                                                onClick={() => configStep > 0 ? setConfigStep(prev => (prev - 1) as ConfigStep) : onBack?.()}
+                                                className="text-gray-500 hover:text-white font-mono transition-colors flex items-center gap-2"
+                                            >
+                                                ← Geri
+                                            </button>
+                                        </div>
                                     </motion.div>
                                 ) : (
                                     /* Confirmation Screen */
@@ -415,8 +429,8 @@ export default function AutomationBoot() {
                                             whileHover={!isActivating ? { scale: 1.02 } : {}}
                                             whileTap={!isActivating ? { scale: 0.98 } : {}}
                                             className={`w-full p-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all ${isActivating
-                                                    ? 'bg-[#c8ff00]/50 text-black/50 cursor-not-allowed'
-                                                    : 'bg-[#c8ff00] text-black hover:shadow-[0_0_40px_rgba(200,255,0,0.4)]'
+                                                ? 'bg-[#c8ff00]/50 text-black/50 cursor-not-allowed'
+                                                : 'bg-[#c8ff00] text-black hover:shadow-[0_0_40px_rgba(200,255,0,0.4)]'
                                                 }`}
                                         >
                                             {isActivating ? (
@@ -435,6 +449,14 @@ export default function AutomationBoot() {
                                                 </>
                                             )}
                                         </motion.button>
+                                        <div className="mt-4 flex items-center justify-center">
+                                            <button
+                                                onClick={() => setConfigStep(4)}
+                                                className="text-gray-500 hover:text-white font-mono text-sm transition-colors"
+                                            >
+                                                ← Yapılandırmaya Dön
+                                            </button>
+                                        </div>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -469,10 +491,10 @@ export default function AutomationBoot() {
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         className={`mb-2 flex items-start gap-2 ${log.type === 'success'
-                                                ? 'text-[#c8ff00]'
-                                                : log.type === 'system'
-                                                    ? 'text-blue-400'
-                                                    : 'text-gray-400'
+                                            ? 'text-[#c8ff00]'
+                                            : log.type === 'system'
+                                                ? 'text-blue-400'
+                                                : 'text-gray-400'
                                             }`}
                                     >
                                         <span className="text-gray-600 select-none">&gt;</span>
