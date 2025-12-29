@@ -4,13 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBoot } from '@/contexts/BootContext';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-// Extend jsPDF type for autotable
-declare module 'jspdf' {
-    interface jsPDF {
-        autoTable: (options: any) => jsPDF;
-    }
-}
+import autoTable from 'jspdf-autotable';
 
 // Type definitions
 import { submitIntake } from '@/app/actions';
@@ -131,11 +125,6 @@ export default function BusinessBirthIntake() {
     const [showConditional, setShowConditional] = useState(false);
     const [conditionalStep, setConditionalStep] = useState(0);
     const logRef = useRef<HTMLDivElement>(null);
-
-    // Update URL
-    useEffect(() => {
-        window.history.pushState({}, '', '/birth/intake');
-    }, []);
 
     // Auto-scroll logs
     useEffect(() => {
@@ -348,7 +337,12 @@ export default function BusinessBirthIntake() {
     };
 
     if (showSummary) {
-        return <IntakeSummary answers={answers} conditionalAnswers={conditionalAnswers} onClose={() => setStep('ONLINE')} />;
+        return <IntakeSummary
+            answers={answers}
+            conditionalAnswers={conditionalAnswers}
+            onClose={() => setShowSummary(false)} // Fix: Go back to editing mode if needed, or close
+            onUpdateAnswers={(newAnswers) => setAnswers(newAnswers)} // Allow summary to update state
+        />;
     }
 
     return (
@@ -518,9 +512,10 @@ export default function BusinessBirthIntake() {
 }
 
 // Summary Component
-function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Record<string, any>; conditionalAnswers: Record<string, any>; onClose: () => void }) {
+function IntakeSummary({ answers, conditionalAnswers, onClose, onUpdateAnswers }: { answers: Record<string, any>; conditionalAnswers: Record<string, any>; onClose: () => void; onUpdateAnswers: (newAnswers: any) => void }) {
     const [exporting, setExporting] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [editingGroup, setEditingGroup] = useState<number | null>(null); // Track which group is being edited
 
 
     const getAutomationCandidates = () => {
@@ -555,7 +550,7 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
         if (answers.metaAccess === 'Yok') checklist.push('Meta Business Suite erişimi sağlama');
         if (answers.domainAccess === 'Bilmiyorum') checklist.push('Domain erişim bilgilerini edinme');
         checklist.push('Ürün/hizmet kataloğu düzenleme');
-        checklist.push('SSS içeriklerini sisteme aktarma');
+        checklist.push('SSS içeriklerini sisteme aktırma');
         return checklist;
     };
 
@@ -598,8 +593,7 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
             });
         });
 
-        // @ts-ignore
-        doc.autoTable({
+        autoTable(doc, {
             startY: yPos,
             head: [['Soru / Alan', 'Yanıt']],
             body: tableBody,
@@ -712,8 +706,16 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
                                 });
                                 if (groupAnswers.length === 0) return null;
                                 return (
-                                    <div key={group.id} className="space-y-2">
-                                        <h4 className="text-xs text-[#c8ff00] font-mono">{group.icon} {group.label}</h4>
+                                    <div key={group.id} className="space-y-2 relative group-container">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs text-[#c8ff00] font-mono">{group.icon} {group.label}</h4>
+                                            <button
+                                                onClick={() => setEditingGroup(QUESTION_GROUPS.indexOf(group))}
+                                                className="text-[10px] text-gray-500 hover:text-white border border-white/10 px-2 py-1 rounded"
+                                            >
+                                                Düzenle
+                                            </button>
+                                        </div>
                                         {groupAnswers.map(([key, value]) => (
                                             <div key={key} className="flex justify-between text-sm border-b border-white/5 pb-2">
                                                 <span className="text-gray-500">{ALL_QUESTIONS.find(q => q.id === key)?.label.slice(0, 30)}...</span>
@@ -778,13 +780,6 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
                         )}
                     </button>
                     <button
-                        onClick={onClose}
-                        className="px-6 py-3 border border-white/20 text-white font-bold rounded-lg hover:border-white/50 transition-all opacity-70 hover:opacity-100"
-                    >
-                        Düzeltme Yap
-                    </button>
-
-                    <button
                         onClick={handleSystemStart}
                         disabled={submitting}
                         className="px-8 py-4 bg-[#c8ff00] text-black text-lg font-bold rounded-xl hover:shadow-[0_0_30px_rgba(200,255,0,0.6)] hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -802,6 +797,120 @@ function IntakeSummary({ answers, conditionalAnswers, onClose }: { answers: Reco
                     </button>
                 </div>
             </div>
+
+            {/* Edit Modal */}
+            <AnimatePresence>
+                {editingGroup !== null && (
+                    <EditGroupModal
+                        groupIndex={editingGroup}
+                        answers={answers}
+                        onClose={() => setEditingGroup(null)}
+                        onSave={(newGroupAnswers) => {
+                            onUpdateAnswers({ ...answers, ...newGroupAnswers });
+                            setEditingGroup(null);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+}
+
+// Simple Modal for Editing a Group
+function EditGroupModal({ groupIndex, answers, onClose, onSave }: any) {
+    const group = QUESTION_GROUPS[groupIndex];
+    const questions = ALL_QUESTIONS.filter(q => q.group === groupIndex);
+    const [localAnswers, setLocalAnswers] = useState(answers);
+
+    const handleChange = (id: string, value: any) => {
+        setLocalAnswers((prev: any) => ({ ...prev, [id]: value }));
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+            <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                className="bg-[#111] border border-white/20 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl"
+            >
+                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/40 rounded-t-xl">
+                    <h3 className="font-bold text-lg">{group.icon} {group.label} Düzenle</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                    {questions.map((q) => (
+                        <div key={q.id} className="space-y-2">
+                            <label className="text-sm text-gray-400 font-mono block">{q.label}</label>
+                            {q.type === 'text' && (
+                                <input
+                                    type="text"
+                                    value={localAnswers[q.id] || ''}
+                                    onChange={(e) => handleChange(q.id, e.target.value)}
+                                    className="w-full bg-black/50 border border-white/10 rounded p-3 outline-none focus:border-[#c8ff00]"
+                                />
+                            )}
+                            {q.type === 'textarea' && (
+                                <textarea
+                                    rows={3}
+                                    value={localAnswers[q.id] || ''}
+                                    onChange={(e) => handleChange(q.id, e.target.value)}
+                                    className="w-full bg-black/50 border border-white/10 rounded p-3 outline-none focus:border-[#c8ff00]"
+                                />
+                            )}
+                            {q.type === 'select' && (
+                                <select
+                                    value={localAnswers[q.id] || ''}
+                                    onChange={(e) => handleChange(q.id, e.target.value)}
+                                    className="w-full bg-black/50 border border-white/10 rounded p-3 outline-none focus:border-[#c8ff00]"
+                                >
+                                    <option value="">Seçiniz</option>
+                                    {q.options?.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            )}
+                            {q.type === 'multi-select' && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {q.options?.map(opt => {
+                                        const current = (localAnswers[q.id] as string[]) || [];
+                                        const isSelected = current.includes(opt);
+                                        return (
+                                            <button
+                                                key={opt}
+                                                onClick={() => {
+                                                    const newData = isSelected
+                                                        ? current.filter(x => x !== opt)
+                                                        : [...current, opt];
+                                                    handleChange(q.id, newData);
+                                                }}
+                                                className={`p-2 text-xs border rounded text-left ${isSelected ? 'border-[#c8ff00] text-[#c8ff00]' : 'border-white/10 text-gray-500'}`}
+                                            >
+                                                {opt} {isSelected && '✓'}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-4 border-t border-white/10 bg-black/40 rounded-b-xl flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-white">İptal</button>
+                    <button
+                        onClick={() => onSave(localAnswers)}
+                        className="px-6 py-2 bg-[#c8ff00] text-black font-bold rounded hover:shadow-[0_0_15px_rgba(200,255,0,0.4)] transition-all"
+                    >
+                        Kaydet ve Kapat
+                    </button>
+                </div>
+            </motion.div>
         </motion.div>
     );
 }
